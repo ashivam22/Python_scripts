@@ -24,13 +24,18 @@ conn = psycopg2.connect(
 )
 cur = conn.cursor()
 
-# Create TZDB_TIMEZONES table
+# Delete and recreate TZDB_TIMEZONES table
 cur.execute('DROP TABLE IF EXISTS TZDB_TIMEZONES')
 cur.execute('CREATE TABLE TZDB_TIMEZONES (zone_id VARCHAR(50) PRIMARY KEY, zone_name VARCHAR(100))')
 
 # Create TZDB_ERROR_LOG table
 cur.execute('DROP TABLE IF EXISTS TZDB_ERROR_LOG')
 cur.execute('CREATE TABLE TZDB_ERROR_LOG (timestamp TIMESTAMP, error_message TEXT)')
+
+# Create staging table TZDB_ZONE_DETAILS_STAGE
+cur.execute('DROP TABLE IF EXISTS TZDB_ZONE_DETAILS_STAGE')
+cur.execute('CREATE TABLE TZDB_ZONE_DETAILS_STAGE (zone_id VARCHAR(50) PRIMARY KEY, country_name VARCHAR(100), '
+            'abbreviation VARCHAR(10), gmt_offset INT, dst_offset INT)')
 
 # Query TimezoneDB API to populate TZDB_TIMEZONES table
 try:
@@ -49,7 +54,7 @@ except requests.HTTPError as err:
     timestamp = datetime.now()
     cur.execute('INSERT INTO TZDB_ERROR_LOG (timestamp, error_message) VALUES (%s, %s)', (timestamp, error_message))
 
-# Query TimezoneDB API to populate TZDB_ZONE_DETAILS table
+# Query TimezoneDB API to populate TZDB_ZONE_DETAILS_STAGE table
 for timezone in timezones:
     zone_id = timezone['zoneId']
     params = {'key': api_key, 'zone': zone_id}
@@ -63,13 +68,18 @@ for timezone in timezones:
             abbreviation = data['abbreviation']
             gmt_offset = data['gmtOffset']
             dst_offset = data['dstOffset']
-            cur.execute('INSERT INTO TZDB_ZONE_DETAILS (zone_id, country_name, abbreviation, gmt_offset, dst_offset) '
-                        'VALUES (%s, %s, %s, %s, %s)', (zone_id, country_name, abbreviation, gmt_offset, dst_offset))
+            cur.execute('INSERT INTO TZDB_ZONE_DETAILS_STAGE (zone_id, country_name, abbreviation, gmt_offset, dst_offset) '
+                        'VALUES (%s, %s, %s, %s, %s) ON CONFLICT (zone_id) DO NOTHING',
+                        (zone_id, country_name, abbreviation, gmt_offset, dst_offset))
     except requests.HTTPError as err:
         # Log the error into TZDB_ERROR_LOG table
         error_message = str(err)
         timestamp = datetime.now()
         cur.execute('INSERT INTO TZDB_ERROR_LOG (timestamp, error_message) VALUES (%s, %s)', (timestamp, error_message))
+
+# Update TZDB_ZONE_DETAILS table from TZDB_ZONE_DETAILS_STAGE
+cur.execute('INSERT INTO TZDB_ZONE_DETAILS SELECT * FROM TZDB_ZONE_DETAILS_STAGE')
+cur.execute('DROP TABLE IF EXISTS TZDB_ZONE_DETAILS_STAGE')
 
 # Commit changes and close connection
 conn.commit()
