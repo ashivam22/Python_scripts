@@ -3,13 +3,13 @@ import psycopg2
 from datetime import datetime
 
 # Database connection details
-db_host = 'your_db_host'
-db_name = 'your_db_name'
-db_user = 'your_db_user'
-db_password = 'your_db_password'
+db_host = 'localhost'
+db_name = 'mydatabase'
+db_user = 'myusername'
+db_password = 'mypassword'
 
 # TimezoneDB API details
-api_key = 'your_api_key'
+api_key = '0LNKIJ290145'
 
 # API endpoints
 timezone_list_endpoint = f'http://api.timezonedb.com/v2.1/list-time-zone?key={api_key}'
